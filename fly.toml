@@ -1,9 +1,9 @@
-# fly.toml file generated for edge-runtime-demo on 2023-04-04T12:17:09+10:00
+# fly.toml file generated for edge-runtime-demo on 2023-04-05T16:00:04Z
 
 app = "edge-runtime-demo"
 kill_signal = "SIGINT"
 kill_timeout = 5
-primary_region = "syd"
+primary_region = "cdg"
 processes = []
 
 [env]
