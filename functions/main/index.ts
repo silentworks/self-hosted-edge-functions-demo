@@ -2,7 +2,54 @@ import { serve } from "https://deno.land/std@0.131.0/http/server.ts"
 
 console.log('main function started');
 
+const JWT_SECRET = Deno.env.get("JWT_SECRET");
+const VERIFY_JWT = Deno.env.get("VERIFY_JWT") === "true";
+
+function getAuthToken(req: Request) {
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader) {
+    throw new Error("Missing authorization header");
+  }
+  const [bearer, token] = authHeader.split(" ");
+  if (bearer !== "Bearer") {
+    throw new Error(`Auth header is not 'Bearer {token}'`);
+  }
+  return token;
+}
+
+async function verifyJWT(jwt: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const secretKey = encoder.encode(JWT_SECRET);
+  try {
+    await jose.jwtVerify(jwt, secretKey);
+  } catch (err) {
+    console.error(err);
+    return false;
+  }
+  return true;
+}
+
 serve(async (req: Request) => {
+  if (req.method !== "OPTIONS" && VERIFY_JWT) {
+    try {
+      const token = getAuthToken(req);
+      const isValidJWT = await verifyJWT(token);
+
+      if (!isValidJWT) {
+        return new Response(
+          JSON.stringify({ msg: "Invalid JWT"}),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ) 
+      }
+    } catch (e) {
+      console.error(e);
+      return new Response(
+        JSON.stringify({ msg: e.toString()}),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      )
+    }
+  }
+
   const url = new URL(req.url);
   const {pathname} = url;
   const path_parts = pathname.split("/");
@@ -16,24 +63,26 @@ serve(async (req: Request) => {
     )
   }
 
-  const service_path = `/home/deno/functions/${service_name}`;
-  console.error(`serving the request with ${service_path}`);
+  const servicePath = `/home/deno/functions/${service_name}`;
+  console.error(`serving the request with ${servicePath}`);
 
-  const memory_limit_mb = 150;
-  const worker_timeout_ms = 5 * 60 * 1000;
-  const no_module_cache = false;
-  const import_map_path = null;
-  const env_vars = [];
+  const memoryLimitMb = 150;
+  const workerTimeoutMs = 1 * 60 * 1000;
+  const noModuleCache = false;
+  const importMapPath = null;
+  const envVarsObj = Deno.env.toObject();
+  const envVars = Object.keys(envVarsObj).map(k => [k, envVarsObj[k]]);
+
   try {
     const worker = await EdgeRuntime.userWorkers.create({
-      service_path,
-      memory_limit_mb,
-      worker_timeout_ms,
-      no_module_cache,
-      import_map_path,
-      env_vars
+      servicePath,
+      memoryLimitMb,
+      workerTimeoutMs,
+      noModuleCache,
+      importMapPath,
+      envVars
     });
-    return worker.fetch(req);
+    return await worker.fetch(req);
   } catch (e) {
     const error = { msg: e.toString() }
     return new Response(
